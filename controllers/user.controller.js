@@ -1,12 +1,15 @@
 const htto = require('http');
 const path = require('path');
 const status = require('http-status');
+const jwt = require('jsonwebtoken');
+const _config = require('../_config');
+const fs = require('fs');
+const csv = require('csv-parser');  
 
 let _user;
 
 const createUser = (req, res) => {
     const user = req.body;
-
     _user.create(user)
     .then((data) => {
         res.status(200);
@@ -14,7 +17,28 @@ const createUser = (req, res) => {
     })
     .catch((err) => {
         res.status(400);
-        res.json({msg: "Error!", data: err});
+        res.json({msg: "Error!", err: err});
+    });
+}
+const readWriteCSV = (req,res) => {
+    //var arInfo = req.body;
+    fs.createReadStream('archivo.csv')  
+    .pipe(csv())
+    .on('data', (row) => {
+        console.log(row); // crear
+        _user.create(row)
+        .then((data) => {
+            console.log(data);
+            res.status(200);
+            res.json({msg:" Archivo CSV insertado correctamente"});
+        })
+        .catch((err) => {
+            res.status(400);
+            res.json({msg:"Error!!",err:err});
+        });
+    })
+    .on('end',() => {
+        console.log('CSV file successfully processed');
     });
 }
 
@@ -61,7 +85,6 @@ const updateByID = (req,res) => {
         res.json({msg:"Error! no se puede actualizar", err:err})
     });
 } 
-
 const deleteByID = (req,res) =>{
     const { id } = req.params;
     //const id = req.params.id;
@@ -79,35 +102,44 @@ const deleteByID = (req,res) =>{
         res.json({msg:"Error!!! No se encontró ",err:err});
     });
 }
+const login = (req,res) => {
+    const  {email, password} = req.params;
+    let query = {email: email, password:password};
 
-const Login = (req,res) => {
-    const  email  = req.body.email;
-    const password = req.body.password;
-    
-    _user.findOne({email:email})
-    .then((data) => {
-        if(data.length == 0 || password != data.password){
-            res.status(status.NOT_FOUND);
-            res.json({msg:"No existe ningun usuario con el email",data:data});
-        }else{
+    _user.findOne(query, "-password")
+    .then((user) => {
+        if(user){
+            const token = jwt.sign({email:email}, _config.SECRETJWT);
             res.status(status.OK);
-            res.json({msg:"El usuario si existe", data:data});
+            res.json({
+                msg:"Acceso exitoso",
+                data:{
+                    user:user,
+                    token:token
+                }
+            });
+        }else{
+            res.status(status.NOT_FOUND);
+            res.json({msg:"Error!!! No se encontró"});
         }
     })
     .catch((err) => {
         res.status(status.NOT_FOUND);
-        res.json({msg:"Error! no se encontró el usuario con esos datos",err:err});
+        res.json({msg:"Error! no se encontró",err:err});
     });
 }
+
 
 module.exports = (User) => {
     _user = User;
     return ({
-        Login,
+        
         createUser,
         findAll,
         findByID,
         updateByID,
-        deleteByID
+        deleteByID,
+        login,
+        readWriteCSV
     });
 }
